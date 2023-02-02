@@ -1,11 +1,18 @@
 package main
 
-import "github.com/appleboy/go-fcm"
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/appleboy/go-fcm"
+	pr "github.com/crow-misia/go-push-receiver"
+	"os"
+)
 
 func main() {
+	creds, _ := loadCreds()
 	sender, _ := fcm.NewClient("") // api key
-	sender.Send(&fcm.Message{
-		RegistrationIDs: []string{"cyeBz3DDOuE:APA91bE9HGc4PAX01K8ztaoSpaLvlzdIwVJSk7mExUolyf2joddxxO-kLvwaWnDmClDMAQMeIwwFUBs-M-6tH1EuE6QXjtoE7gwnMslLYfHkdPuBq6uyfROhnbejWuvz5JYEH9iT-utm"},
+	send, _ := sender.Send(&fcm.Message{
+		To: "",
 		Notification: &fcm.Notification{
 			Title: "Test Notification",
 			Body:  "With Body",
@@ -14,4 +21,18 @@ func main() {
 			"Test": "Hello World",
 		},
 	})
+	fmt.Println(creds.Token)
+	fmt.Println(send.Results[0])
+	/*
+	 {"multicast_id":4827136729016708860,"success":0,"failure":1,"canonical_ids":0,"results":[{"error":"InvalidParameters: unsupported token type"}]}
+	*/
+}
+
+func loadCreds() (*pr.FCMCredentials, error) {
+	content, err := os.ReadFile("credentials.json")
+	if err != nil {
+		return nil, err
+	}
+	creds := pr.FCMCredentials{}
+	return &creds, json.Unmarshal(content, &creds)
 }

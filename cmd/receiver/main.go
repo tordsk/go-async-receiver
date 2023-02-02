@@ -32,7 +32,9 @@ func main() {
 		cancel()
 		done <- true
 	}()
-	logger := logrus.NewEntry(logrus.New())
+	l := logrus.New()
+	l.SetLevel(logrus.TraceLevel)
+	logger := logrus.NewEntry(l)
 
 	opts := []pr.ClientOption{
 		pr.WithHeartbeatPeriod(10 * time.Second),
@@ -46,41 +48,40 @@ func main() {
 		opts = append(opts, pr.WithCreds(creds))
 	}
 
-	client := pr.New("729118971144", opts...)
+	client := pr.New("730815416529", opts...)
 	go client.Subscribe(ctx)
-	go func() {
-		logger.Info("Waiting for events")
-		for {
-			select {
-			case <-ctx.Done():
-				if ctx.Err() != nil {
+
+	for {
+		select {
+		case <-ctx.Done():
+			if ctx.Err() != nil {
+				logger.WithError(err).Error()
+			}
+			return
+		case event := <-client.Events:
+			logger.WithField("event", event).
+				WithField("type", fmt.Sprintf("%T\n", event)).
+				Infof("received notification event")
+			switch e := event.(type) {
+			case *pr.UpdateCredentialsEvent:
+				err := persist(e.Credentials)
+				logger.Info(e.Credentials.Token)
+				if err != nil {
 					logger.WithError(err).Error()
 				}
-				return
-			case event := <-client.Events:
-				logger.WithField("event", event).
-					WithField("type", fmt.Sprintf("%T\n", event)).
-					Infof("received notification event")
-				switch e := event.(type) {
-				case *pr.UpdateCredentialsEvent:
-					err := persist(e.Credentials)
-					if err != nil {
-						logger.WithError(err).Error()
-					}
-				case *pr.ConnectedEvent:
-				case *pr.DisconnectedEvent:
-					logger.WithError(e.ErrorObj).Error("disconnected")
-				case *pr.HeartbeatEvent:
-					logger.WithField("heartbeat", e).Debug()
-				case *pr.MessageEvent:
-					logger.WithField("msg", e).Info(string(e.Data))
-				case *pr.RetryEvent:
-					logger.WithField("retry_after", e.RetryAfter).WithError(e.ErrorObj).Error("retry")
-				}
+			case *pr.ConnectedEvent:
+				logger.WithField("connected", e.ServerTimestamp).Info("Connected")
+			case *pr.DisconnectedEvent:
+				logger.WithError(e.ErrorObj).Error("disconnected")
+			case *pr.HeartbeatEvent:
+				logger.WithField("heartbeat", e).Debug()
+			case *pr.MessageEvent:
+				logger.WithField("msg", e).Info(string(e.Data))
+			case *pr.RetryEvent:
+				logger.WithField("retry_after", e.RetryAfter).WithError(e.ErrorObj).Error("retry")
 			}
 		}
-	}()
-	<-done
+	}
 }
 
 func persist(credentials *pr.FCMCredentials) error {
@@ -91,7 +92,7 @@ func persist(credentials *pr.FCMCredentials) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("credentials.json", content, 0600)
+	return os.WriteFile("credentials.json", content, 0666)
 }
 
 func loadCreds() (*pr.FCMCredentials, error) {
